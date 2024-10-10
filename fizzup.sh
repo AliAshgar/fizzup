@@ -9,36 +9,81 @@ VERSION="latest"
 GATEWAY_ADDRESS="provider.cpu.gpufarm.xyz" # Provider domain: example = provider.devnetcsphn.com
 GATEWAY_PROXY_PORT="8553" # Proxyport = 8553
 GATEWAY_WEBSOCKET_PORT="8544" # ws url of the gateway example= ws://provider.devnetcsphn.com:8544
-CPU_PRICE="3"
-CPU_UNITS="4"
-MEMORY_PRICE="0.8"
-MEMORY_UNITS="8"
-STORAGE_PRICE="5"
+CPU_PRICE="6"
+CPU_UNITS="8"
+MEMORY_PRICE="2.4000000000000004"
+MEMORY_UNITS="24"
+STORAGE_PRICE="12"
 WALLET_ADDRESS="0xCEd44a91f993649eB9E63Fe09d80A9C82C7b446b" 
 USER_TOKEN="0x382ad474b8d9b180307b8000352b723a8baf7e5c8237a3e5e59cee63739cd1fe3b80ff3cef8602146d7b5ef35d6b1e06568c42bd0d6803845d938ff3f262f20101"
-STORAGE_UNITS="500"
+STORAGE_UNITS="1200"
 GPU_MODEL=""
 GPU_UNITS="0"
 GPU_PRICE="0"
 GPU_MEMORY="<gpu-memory>"
+GPU_ID=""
+
+# Function to detect the operating system
+detect_os() {
+    case "$(uname -s)" in
+        Darwin*)    echo "macos" ;;
+        Linux*)     
+            if grep -q Microsoft /proc/version; then
+                echo "wsl"
+            else
+                echo "linux"
+            fi
+            ;;
+        CYGWIN*|MINGW32*|MSYS*|MINGW*) echo "windows" ;;
+        *)          echo "unknown" ;;
+    esac
+}
+
+OS=$(detect_os)
+ARCH="$(uname -m)"
 
 # Function to display system information
 display_system_info() {
     echo "System Information:"
     echo "==================="
-    
+    echo "Detecting system configuration..."
+    echo "Operating System: $OS"
+    echo "Architecture: $ARCH"
     # CPU information
-    cpu_cores=$(sysctl -n hw.ncpu 2>/dev/null || nproc)
+    case $OS in
+        macos)
+            cpu_cores=$(sysctl -n hw.ncpu)
+            ;;
+        linux|wsl)
+            cpu_cores=$(nproc)
+            ;;
+        *)
+            cpu_cores="Unknown"
+            ;;
+    esac
     echo "Available CPU cores: $cpu_cores"
     
+    # disable cpu check
+    # if [ "$cpu_cores" != "$CPU_UNITS" ]; then
+    # echo "Error: Available CPU cores ($cpu_cores) does not match CPU_UNITS ($CPU_UNITS)"
+    # exit 1
+    # fi
+    
     # Memory information
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        total_memory=$(sysctl -n hw.memsize | awk '{printf "%.2f GB", $1 / 1024 / 1024 / 1024}')
-        available_memory=$(vm_stat | awk '/Pages free/ {free=$3} /Pages inactive/ {inactive=$3} END {printf "%.2f GB", (free+inactive)*4096/1024/1024/1024}')
-    else
-        total_memory=$(free -h | awk '/^Mem:/ {print $2}')
-        available_memory=$(free -h | awk '/^Mem:/ {print $7}')
-    fi
+    case $OS in
+        macos)
+            total_memory=$(sysctl -n hw.memsize | awk '{printf "%.2f GB", $1 / 1024 / 1024 / 1024}')
+            available_memory=$(vm_stat | awk '/Pages free/ {free=$3} /Pages inactive/ {inactive=$3} END {printf "%.2f GB", (free+inactive)*4096/1024/1024/1024}')
+            ;;
+        linux|wsl)
+            total_memory=$(free -h | awk '/^Mem:/ {print $2}')
+            available_memory=$(free -h | awk '/^Mem:/ {print $7}')
+            ;;
+        *)
+            total_memory="Unknown"
+            available_memory="Unknown"
+            ;;
+    esac
     echo "Total memory: $total_memory"
     echo "Available memory: $available_memory"
     
@@ -53,53 +98,82 @@ display_system_info() {
 # Function to check bandwidth
 check_bandwidth() {
     echo "Checking bandwidth..."
-    # Use speedtest-cli to measure download and upload speeds
     if ! command -v speedtest-cli &> /dev/null; then
         echo "speedtest-cli not found. Installing..."
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            brew install speedtest-cli
-        else
-            sudo apt-get update && sudo apt-get install -y speedtest-cli
-        fi
+        case $OS in
+            macos)
+                brew install speedtest-cli
+                ;;
+            linux|wsl)
+                if command -v apt-get &> /dev/null; then
+                    sudo apt-get update && sudo apt-get install -y speedtest-cli
+                elif command -v yum &> /dev/null; then
+                    sudo yum install -y speedtest-cli
+                elif command -v dnf &> /dev/null; then
+                    sudo dnf install -y speedtest-cli
+                else
+                    echo "Unable to install speedtest-cli. Please install it manually."
+                    return 1
+                fi
+                ;;
+            *)
+                echo "Unsupported OS for automatic speedtest-cli installation. Please install it manually."
+                return 1
+                ;;
+        esac
     fi
 
     # Run speedtest and capture results
-    result=$(speedtest-cli)
-    download=$(echo "$result" | grep "Download" | awk '{print $2}')
-    upload=$(echo "$result" | grep "Upload" | awk '{print $2}')
-
-    echo "Download speed: $download Mbit/s"
-    echo "Upload speed: $upload Mbit/s"
-
-    # Determine bandwidth range
-    total_speed=$(echo "$download + $upload" | bc)
-    if (( $(echo "$total_speed < 50" | bc -l) )); then
-        BANDWIDTH_RANGE="10mbps"
-    elif (( $(echo "$total_speed < 100" | bc -l) )); then
-        BANDWIDTH_RANGE="50mbps"
-    elif (( $(echo "$total_speed < 200" | bc -l) )); then
-        BANDWIDTH_RANGE="100mbps"
-    elif (( $(echo "$total_speed < 300" | bc -l) )); then
-        BANDWIDTH_RANGE="200mbps"
-    elif (( $(echo "$total_speed < 400" | bc -l) )); then
-        BANDWIDTH_RANGE="300mbps"
-    elif (( $(echo "$total_speed < 500" | bc -l) )); then
-        BANDWIDTH_RANGE="400mbps"
-    elif (( $(echo "$total_speed < 1000" | bc -l) )); then
-        BANDWIDTH_RANGE="500mbps"
-    elif (( $(echo "$total_speed < 5000" | bc -l) )); then
-        BANDWIDTH_RANGE="1gbps"
-    elif (( $(echo "$total_speed < 10000" | bc -l) )); then
-        BANDWIDTH_RANGE="5gbps"
-    elif (( $(echo "$total_speed > 10000" | bc -l) )); then
-        BANDWIDTH_RANGE="10gbps"
-    else
+    result=$(speedtest-cli 2>&1)
+    if echo "$result" | grep -q "ERROR"; then
+        echo "Error running speedtest: $result"
         BANDWIDTH_RANGE="NA"
+    else
+        download=$(echo "$result" | grep "Download" | awk '{print $2}')
+        upload=$(echo "$result" | grep "Upload" | awk '{print $2}')
+
+        if [[ -z "$download" || -z "$upload" ]]; then
+            echo "Error: Could not parse download or upload speed"
+            BANDWIDTH_RANGE="NA"
+        else
+            echo "Download speed: $download Mbit/s"
+            echo "Upload speed: $upload Mbit/s"
+
+            # Determine bandwidth range
+            total_speed=$(echo "$download + $upload" | bc 2>/dev/null)
+            if [[ $? -ne 0 || -z "$total_speed" ]]; then
+                echo "Error: Could not calculate total speed"
+                BANDWIDTH_RANGE="NA"
+            else
+                if (( $(echo "$total_speed < 50" | bc -l) )); then
+                    BANDWIDTH_RANGE="10mbps"
+                elif (( $(echo "$total_speed < 100" | bc -l) )); then
+                    BANDWIDTH_RANGE="50mbps"
+                elif (( $(echo "$total_speed < 200" | bc -l) )); then
+                    BANDWIDTH_RANGE="100mbps"
+                elif (( $(echo "$total_speed < 300" | bc -l) )); then
+                    BANDWIDTH_RANGE="200mbps"
+                elif (( $(echo "$total_speed < 400" | bc -l) )); then
+                    BANDWIDTH_RANGE="300mbps"
+                elif (( $(echo "$total_speed < 500" | bc -l) )); then
+                    BANDWIDTH_RANGE="400mbps"
+                elif (( $(echo "$total_speed < 1000" | bc -l) )); then
+                    BANDWIDTH_RANGE="500mbps"
+                elif (( $(echo "$total_speed < 5000" | bc -l) )); then
+                    BANDWIDTH_RANGE="1gbps"
+                elif (( $(echo "$total_speed < 10000" | bc -l) )); then
+                    BANDWIDTH_RANGE="5gbps"
+                elif (( $(echo "$total_speed >= 10000" | bc -l) )); then
+                    BANDWIDTH_RANGE="10gbps"
+                else
+                    BANDWIDTH_RANGE="NA"
+                fi
+            fi
+        fi
     fi
 
     echo "Bandwidth range: $BANDWIDTH_RANGE"
 }
-
 
 # Check for 'info' flag
 if [ "$1" == "info" ]; then
@@ -115,14 +189,7 @@ echo ""
 echo "$BINARY_NAME $VERSION"
 echo ""
 
-# Detect the operating system and architecture
-OS="$(uname -s)"
-ARCH="$(uname -m)"
-echo "Detecting system configuration..."
-echo "Operating System: $OS"
-echo "Architecture: $ARCH"
-echo ""
-echo ""
+
 display_system_info 
 check_bandwidth
 
@@ -158,7 +225,7 @@ install_docker_ubuntu() {
         curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
 
         sudo apt-get update
-        sudo apt-get install -y nvidia-docker2
+        sudo apt-get install -y nvidia-docker2 jq
         sudo systemctl restart docker
         sudo curl -L "https://github.com/docker/compose/releases/download/v2.21.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
         sudo chmod +x /usr/local/bin/docker-compose
@@ -167,7 +234,7 @@ install_docker_ubuntu() {
     else 
         echo "Installing Docker for Ubuntu/Debian..."
         sudo apt-get update
-        sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+        sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common jq
         curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
         sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
         sudo apt-get update
@@ -185,7 +252,7 @@ install_docker_fedora() {
     echo "Installing Docker for Fedora..."
     sudo dnf -y install dnf-plugins-core
     sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
-    sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin jq
     sudo systemctl start docker
     sudo systemctl enable docker
     sudo usermod -aG docker $USER
@@ -199,8 +266,26 @@ verify_gpu_info() {
         gpu_count=$(nvidia-smi --list-gpus | wc -l)
         gpu_model=$(nvidia-smi --query-gpu=gpu_name --format=csv,noheader,nounits | head -n1)
         gpu_memory_mib=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -n1)
+        gpu_pcie_id=$(nvidia-smi --query-gpu=pci.device_id --format=csv,noheader | head -n1 | cut -c3-6 | tr '[:upper:]' '[:lower:]')
         
-        # Convert MiB to GiB
+        json_url="https://spheron-release.s3.amazonaws.com/static/gpus-pcie.json"
+        json_content=$(curl -s "$json_url") 
+
+        read_json_value() {
+            local json="$1"
+            local key="$2"
+            echo "$json" | jq -r --arg key "$key" '.[$key] // empty'    
+        }
+
+        gpu_key=$(read_json_value "$json_content" "$gpu_pcie_id")
+
+        if [ "$gpu_key" != "$GPU_ID" ]; then
+            echo "Error: GPU ID mismatch. Expected $GPU_ID, but found $gpu_key"
+            exit 1
+        fi
+       
+        echo "GPU ID Found: $gpu_key"
+       
         gpu_memory_gib=$(awk "BEGIN {printf \"%.2f\", $gpu_memory_mib / 1024}")
         
         if [ $gpu_count -gt 0 ]; then
@@ -269,6 +354,34 @@ fi
 # Verify GPU information
 verify_gpu_info
 
+# Function to determine which Docker Compose command works
+get_docker_compose_command() {
+    if command -v docker-compose &>/dev/null; then
+        echo "docker-compose"
+    elif docker compose version &>/dev/null; then
+        echo "docker compose"
+    else
+        echo ""
+    fi
+}
+
+# Get the working Docker Compose command
+DOCKER_COMPOSE_CMD=$(get_docker_compose_command)
+if [ -z "$DOCKER_COMPOSE_CMD" ]; then
+    echo "Error: Neither 'docker-compose' nor 'docker compose' is available."
+    exit 1
+fi
+
+# Check if the docker-compose.yml file exists
+if [ -f ~/.spheron/fizz/docker-compose.yml ]; then
+    echo "Stopping any existing Fizz containers..."
+    $DOCKER_COMPOSE_CMD -f ~/.spheron/fizz/docker-compose.yml down
+    $DOCKER_COMPOSE_CMD -f ~/.spheron/fizz/docker-compose.yml rm 
+else
+    echo "No existing Fizz configuration found. Skipping container cleanup."
+fi
+
+
 # Create config file
 mkdir -p ~/.spheron/fizz
 mkdir -p ~/.spheron/fizz-manifests
@@ -308,9 +421,13 @@ services:
 
 EOF
 
-# Remove the existing Docker image
-echo "Removing existing Docker image..."
-docker rmi -f spheronnetwork/fizz:latest || true
+# Check if the Docker image exists and remove it if present
+if docker image inspect spheronnetwork/fizz:latest >/dev/null 2>&1; then
+    echo "Removing existing Docker image..."
+    docker rmi -f spheronnetwork/fizz:latest
+else
+    echo "Docker image 'spheronnetwork/fizz:latest' not found. Skipping removal."
+fi
 
 if ! docker info >/dev/null 2>&1; then
     echo "Docker is not running. Attempting to start Docker..."
@@ -332,24 +449,6 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 
-# Function to determine which Docker Compose command works
-get_docker_compose_command() {
-    if command -v docker-compose &>/dev/null; then
-        echo "docker-compose"
-    elif docker compose version &>/dev/null; then
-        echo "docker compose"
-    else
-        echo ""
-    fi
-}
-
-# Get the working Docker Compose command
-DOCKER_COMPOSE_CMD=$(get_docker_compose_command)
-if [ -z "$DOCKER_COMPOSE_CMD" ]; then
-    echo "Error: Neither 'docker-compose' nor 'docker compose' is available."
-    exit 1
-fi
-
 echo "Starting Fizz..."
 $DOCKER_COMPOSE_CMD  -f ~/.spheron/fizz/docker-compose.yml up -d --force-recreate
 
@@ -363,8 +462,9 @@ echo "$DOCKER_COMPOSE_CMD -f ~/.spheron/fizz/docker-compose.yml logs -f"
 echo ""
 echo "To stop the service, run:"
 echo "$DOCKER_COMPOSE_CMD -f ~/.spheron/fizz/docker-compose.yml down"
-echo ""
 echo "============================================"
 echo "Thank you for installing Fizz! 🎉"
 echo "============================================"
 echo ""
+echo "Fizz logs:"
+$DOCKER_COMPOSE_CMD -f ~/.spheron/fizz/docker-compose.yml logs -f
