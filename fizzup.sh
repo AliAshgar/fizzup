@@ -6,17 +6,17 @@ BINARY_NAME="fizz"
 VERSION="latest"
 
 # Fizz variables
-GATEWAY_ADDRESS="provider.cpu.gpufarm.xyz" # Provider domain: example = provider.devnetcsphn.com
+GATEWAY_ADDRESS="provider.demeters.io" # Provider domain: example = provider.devnetcsphn.com
 GATEWAY_PROXY_PORT="8553" # Proxyport = 8553
 GATEWAY_WEBSOCKET_PORT="8544" # ws url of the gateway example= ws://provider.devnetcsphn.com:8544
 CPU_PRICE="6"
 CPU_UNITS="8"
-MEMORY_PRICE="1.1"
-MEMORY_UNITS="11"
-STORAGE_PRICE="5"
+MEMORY_PRICE="2.3000000000000003"
+MEMORY_UNITS="23"
+STORAGE_PRICE="10"
 WALLET_ADDRESS="0xCEd44a91f993649eB9E63Fe09d80A9C82C7b446b" 
 USER_TOKEN="0x382ad474b8d9b180307b8000352b723a8baf7e5c8237a3e5e59cee63739cd1fe3b80ff3cef8602146d7b5ef35d6b1e06568c42bd0d6803845d938ff3f262f20101"
-STORAGE_UNITS="500"
+STORAGE_UNITS="1000"
 GPU_MODEL=""
 GPU_UNITS="0"
 GPU_PRICE="0"
