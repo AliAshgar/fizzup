@@ -13,14 +13,14 @@ CPU_PRICE="6"
 CPU_UNITS="8"
 MEMORY_PRICE="2.4000000000000004"
 MEMORY_UNITS="24"
-STORAGE_PRICE="12"
+STORAGE_PRICE="10"
 WALLET_ADDRESS="0xCEd44a91f993649eB9E63Fe09d80A9C82C7b446b" 
 USER_TOKEN="0x382ad474b8d9b180307b8000352b723a8baf7e5c8237a3e5e59cee63739cd1fe3b80ff3cef8602146d7b5ef35d6b1e06568c42bd0d6803845d938ff3f262f20101"
-STORAGE_UNITS="1200"
+STORAGE_UNITS="1000"
 GPU_MODEL=""
 GPU_UNITS="0"
 GPU_PRICE="0"
-GPU_MEMORY="<gpu-memory>"
+GPU_MEMORY="0"
 GPU_ID=""
 
 # Function to detect the operating system
@@ -41,7 +41,6 @@ detect_os() {
 
 OS=$(detect_os)
 ARCH="$(uname -m)"
-
 # Function to display system information
 display_system_info() {
     echo "System Information:"
@@ -175,20 +174,31 @@ check_bandwidth() {
     echo "Bandwidth range: $BANDWIDTH_RANGE"
 }
 
+echo "========================================================================================================================"
+echo ""
+echo "                   ▄▄                                                          ▄▄                                       "
+echo " ▄█▀▀▀█▄█         ███                                               ▀███▀▀▀███ ██                                       "
+echo "▄██    ▀█          ██                                                 ██    ▀█                                          "
+echo "▀███▄   ▀████████▄ ███████▄   ▄▄█▀██▀███▄███  ▄██▀██▄▀████████▄       ██   █ ▀███  █▀▀▀███ █▀▀▀███▀███  ▀███ ▀████████▄ "
+echo "  ▀█████▄ ██   ▀██ ██    ██  ▄█▀   ██ ██▀ ▀▀ ██▀   ▀██ ██    ██       ██▀▀██   ██  ▀  ███  ▀  ███   ██    ██   ██   ▀██ "
+echo "▄     ▀██ ██    ██ ██    ██  ██▀▀▀▀▀▀ ██     ██     ██ ██    ██       ██   █   ██    ███     ███    ██    ██   ██    ██ "
+echo "██     ██ ██   ▄██ ██    ██  ██▄    ▄ ██     ██▄   ▄██ ██    ██       ██       ██   ███  ▄  ███  ▄  ██    ██   ██   ▄██ "
+echo "█▀█████▀  ██████▀ ████  ████▄ ▀█████▀████▄    ▀█████▀▄████  ████▄   ▄████▄   ▄████▄███████ ███████  ▀████▀███▄ ██████▀  "
+echo "          ██                                                                                                   ██       "
+echo "        ▄████▄                                                                                               ▄████▄     "
+echo ""
+echo "                                                                                             - Making edge AI possible. "
+echo "========================================================================================================================"
+echo ""
+echo "$BINARY_NAME Version: $VERSION"
+echo ""
+
 # Check for 'info' flag
 if [ "$1" == "info" ]; then
     display_system_info
     check_bandwidth
     exit 0
 fi
-
-echo "===================================="
-echo "      SPHERON FIZZ INSTALLER        "
-echo "===================================="
-echo ""
-echo "$BINARY_NAME $VERSION"
-echo ""
-
 
 display_system_info 
 check_bandwidth
@@ -219,6 +229,7 @@ install_docker_ubuntu() {
             echo "Please rerun the script after reboot"
             reboot now
         fi
+        check_install_nvidia_toolkit
         echo "NVIDIA GPU detected. Installing NVIDIA Docker"
         distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
         curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
@@ -259,6 +270,31 @@ install_docker_fedora() {
     echo "Docker and Docker Compose for Fedora have been installed. You may need to log out and back in for group changes to take effect."
 }
 
+install_jq() {
+    if ! command -v jq &> /dev/null; then
+        echo "Installing jq..."
+        case $OS in
+            macos)
+                brew install jq
+                ;;
+            linux|wsl)
+                if command -v apt-get &> /dev/null; then
+                    sudo apt-get update && sudo apt-get install -y jq
+                elif command -v yum &> /dev/null; then
+                    sudo yum install -y jq
+                elif command -v dnf &> /dev/null; then
+                    sudo dnf install -y jq
+                else
+                    exit 1
+                fi
+                ;;
+            *)
+                exit 1
+                ;;
+        esac
+    fi
+}
+
 # Function to query nvidia-smi and verify GPU information
 verify_gpu_info() {
     if command -v nvidia-smi &>/dev/null; then
@@ -274,6 +310,7 @@ verify_gpu_info() {
         read_json_value() {
             local json="$1"
             local key="$2"
+            install_jq
             echo "$json" | jq -r --arg key "$key" '.[$key] // empty'    
         }
 
@@ -354,6 +391,25 @@ fi
 # Verify GPU information
 verify_gpu_info
 
+check_install_nvidia_toolkit() {
+    if ! command -v nvidia-container-toolkit &> /dev/null; then
+        echo "NVIDIA Container Toolkit not found. Installing..."
+        if command -v apt-get &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y nvidia-cuda-toolkit
+        elif command -v yum &> /dev/null; then
+            sudo yum install -y nvidia-cuda-toolkit
+        elif command -v dnf &> /dev/null; then
+            sudo dnf install -y nvidia-cuda-toolkit
+        else
+            echo "Unable to install NVIDIA Container Toolkit. Please install it manually."
+            return 1
+        fi
+        echo "NVIDIA Container Toolkit installed successfully."
+    else
+        echo "NVIDIA Container Toolkit is already installed."
+    fi
+}
+
 # Function to determine which Docker Compose command works
 get_docker_compose_command() {
     if command -v docker-compose &>/dev/null; then
@@ -393,7 +449,6 @@ services:
   fizz:
     image: spheronnetwork/fizz:latest
     network_mode: "host"
-    pull_policy: always
     privileged: true
     cpus: 1
     mem_limit: 512M
@@ -451,7 +506,6 @@ fi
 
 echo "Starting Fizz..."
 $DOCKER_COMPOSE_CMD  -f ~/.spheron/fizz/docker-compose.yml up -d --force-recreate
-
 echo ""
 echo "============================================"
 echo "Fizz Is Installed and Running successfully"
